@@ -383,6 +383,11 @@ class SphinxDocbookParser(dbparser.DocbookParser, sphinx.parsers.Parser):
 
     converter = SphinxDocbookConverter
 
+    def nested_parse(self, inputstring, state, parent):
+        self.env = state.memo.document.settings.env
+        self.app = self.env.app
+        self.config = self.env.config
+        dbparser.DocbookParser.nested_parse(self, inputstring, state, parent)
 
 def purge_assembly_structure(app, env, docname):
     if hasattr(env, 'docbook_assembly_info'):

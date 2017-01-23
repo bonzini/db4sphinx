@@ -111,6 +111,9 @@ class DocbookConverter(object):
             self.concat(el, parent)
         self._stack.pop()
 
+    def nested_convert(self, el, node):
+        self._conv(el, node)
+
     def convert_root(self, el):
         self._conv(el, self.document)
 
@@ -714,15 +717,12 @@ class DocbookParser(docutils.parsers.Parser):
 
     converter = DocbookConverter
 
-    def parse(self, inputstring, document):
-        """Parse `inputstring` and populate `document`, a document tree."""
-        self.setup_parse(inputstring, document)
+    def _parse_xml(self, inputstring):
         # pass an encoding so that lxml doesn't complain about
         # an encoding in the XML processing instruction
         parser = lxml.etree.XMLParser(remove_comments=False, encoding='utf-8')
         input = BytesIO(inputstring.encode('utf-8'))
         tree = lxml.etree.parse(input, parser=parser)
-
         try:
             # Python 3
             root = tree.getroot()
@@ -730,5 +730,19 @@ class DocbookParser(docutils.parsers.Parser):
             # Python 2
             root = tree
 
-        self.converter(self, document, root.tag[0] == '{').convert_root(root)
+        return root
+
+    def _get_converter(self, document, root):
+        return self.converter(self, document, root.tag[0] == '{')
+
+    def parse(self, inputstring, document):
+        """Parse `inputstring` and populate `document`, a document tree."""
+        self.setup_parse(inputstring, document)
+        root = self._parse_xml(inputstring)
+        self._get_converter(document, root).convert_root(root)
         self.finish_parse()
+
+    def nested_parse(self, inputstring, state, parent):
+        """Parse `inputstring` and populate `document`, a document tree."""
+        root = self._parse_xml(inputstring)
+        self._get_converter(state.memo.document, root).nested_convert(root, parent)
