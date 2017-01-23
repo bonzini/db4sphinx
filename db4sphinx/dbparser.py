@@ -30,10 +30,13 @@ __contributors__ = ('Kurt McKee <contactme@kurtmckee.org>',
 class DocbookConverter(object):
     ''' converts DocBook tree into docutils nodes '''
 
+    _NSMAP = {}
+
     def __init__(self, parser, document, ns):
         self.parser = parser        # object that called the converter
         self.document = document
         # to avoid duplicate error reports
+        self._not_handled_ns = set()
         self._not_handled_tags = set()
         # delayed output for footnote nodes
         self._save = []
@@ -80,20 +83,24 @@ class DocbookConverter(object):
                 return
 
         tag = str(el.tag)
+        method_name = None
         if tag.find(self._ns) == 0:
             # strip off the default namespace
             tag = tag[len(self._ns):]
-        if tag.startswith("{"):
+            method_name = 'e_' + tag
+        elif tag.startswith("{"):
             # identify other namespaces by prefix used in XML file
             ns, rawTag = tag[1:].split("}")
-            if ns in el.nsmap.values():
-                # find the namespace prefix, given its full value
-                prefix = [k for k, v in el.nsmap.iteritems() if v == ns][0]
-            if prefix is not None:
-                tag = "_".join([prefix, rawTag])
+            prefix = self._NSMAP.get(ns, None)
+            if prefix is None:
+                if ns not in self._not_handled_ns:
+                    self.warning(el, "Don't know how to handle namespace %s" % ns)
+                self._not_handled_tags.add(el.tag)
+            else:
+                method_name = "e_%s_%s" % (prefix, rawTag)
+
         self._stack.append(tag)
-        method_name = 'e_' + tag
-        if hasattr(self, method_name):
+        if method_name is not None and hasattr(self, method_name):
             getattr(self, method_name)(el, parent)   # call the e_tag(el) method
         else:
             if el.tag not in self._not_handled_tags:
