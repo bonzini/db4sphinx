@@ -53,6 +53,8 @@ class DocbookConverter(object):
         self._text_mangle_fn = None
         # used to pick arabic numbers vs. lowercase letters
         self._ordered_list_depth = 0
+        # maintained for use in rST state machine
+        self.current_level = 0
 
         if ns:
             # DocBook 5
@@ -315,7 +317,7 @@ class DocbookConverter(object):
 
     # section elements
 
-    def e_chapter(self, el, parent):
+    def _section(self, el, parent, level):
         def section_title_handler(converter, inner_el, inner_parent):
             #if el.get('label'):
             #    self._text_mangle_fn = lambda x: '%s %s' % (el.get('label'), x)
@@ -326,14 +328,23 @@ class DocbookConverter(object):
         node = self.block(el, parent, nodes.section)
         self._title_handler = save_title_handler
         self.document.set_id(node)
+        self.current_level = level
+
+    def e_chapter(self, el, parent):
+        self._section(el, parent, 0)
+    def e_sect1(self, el, parent):
+        self._section(el, parent, 1)
+    def e_sect2(self, el, parent):
+        self._section(el, parent, 2)
+    def e_sect3(self, el, parent):
+        self._section(el, parent, 3)
+    def e_section(self, el, parent):
+        self._section(el, parent, self.current_level + 1)
+    def e_topic(self, el, parent):
+        self._section(el, parent, self.current_level)
 
     e_preface = e_chapter
-    e_section = e_chapter
     e_appendix = e_chapter
-    e_sect1 = e_chapter
-    e_sect2 = e_chapter
-    e_sect3 = e_chapter
-    e_topic = e_chapter
 
     def e_title(self, el, parent):
         if not self._title_handler is None:
