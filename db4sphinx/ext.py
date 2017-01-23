@@ -5,9 +5,6 @@
     The main purpose of this extension is to use the nice C domain
     formatting of Sphinx, and to support DocBook assemblies.
 
-    TODO: rst directives through <?rst foo: bar ?>
-          math roles
-
     :copyright: 2016 Paolo Bonzini
     :license: MIT.
 """
@@ -21,6 +18,7 @@ from os import path
 from docutils import nodes
 from sphinx import addnodes
 from collections import defaultdict
+from recommonmark.states import DummyStateMachine
 
 __version__ = '0.0.1'
 __contributors__ = ('Paolo Bonzini <pbonzini@redhat.com>')
@@ -82,6 +80,9 @@ class DocbookAssemblyInfo(object):
 
 
 class SphinxDocbookConverter(dbparser.DocbookConverter):
+    _NS = '{https://pypi.python.org/pypi/db4sphinx}'
+    _NSMAP = { _NS[1:-1]: 'sphinx' }
+
     _GENERIC_DOCROLES = {
         'command': addnodes.literal_strong,
         'dfn': nodes.emphasis,
@@ -115,6 +116,58 @@ class SphinxDocbookConverter(dbparser.DocbookConverter):
         if hasattr(self.env, 'docbook_assembly_info'):
             self.env.docbook_assembly_info.create_toctree(
                     self.app, self.document, self.env.docname)
+
+    def _run_directive(self, parent, name, arguments=None, options=None,
+                       content=None):
+        state_machine = DummyStateMachine()
+        state_machine.reset(self.document, parent, self.current_level)
+        if not content is None:
+            content = content.split('\n')
+        parent += state_machine.run_directive(name, arguments=arguments,
+                                              options=options, content=content)
+
+    def _run_role(self, parent, name, options=None, content=None):
+        state_machine = DummyStateMachine()
+        state_machine.reset(self.document, parent, self.current_level)
+        parent += state_machine.run_role(name, options=options, content=content)
+
+    # run rst roles and directives
+
+    def e_sphinx_role(self, el, parent):
+        # example
+        #    <sphinx:role xmlns:sphinx="https://pypi.python.org/pypi/db4sphinx"
+        #           sphinx:name="math">a+b</sphinx:role>
+
+        attrs = dict(el.attrib)
+        name = el.get(self._NS + 'name')
+        del attrs[self._NS + 'name']
+        self._run_role(parent, name, options=attrs, content=el.text)
+
+    def e_sphinx_directive(self, el, parent):
+        # FIXME: no support yet for more than one argument
+        #    <sphinx:directive
+        #           xmlns:sphinx="https://pypi.python.org/pypi/db4sphinx"
+        #           sphinx:name="kernel-doc"
+        #           sphinx:arg="../memory.h"
+        #           export="address_space_*" />
+
+        attrs = dict(el.attrib)
+        name = el.get(self._NS + 'name')
+        del attrs[self._NS + 'name']
+        arg = el.get(self._NS + 'arg', None)
+        if not arg is None:
+            arguments = [arg]
+            del attrs[self._NS + 'arg']
+        else:
+            arguments = None
+        self._run_directive(parent, name, arguments=arguments,
+                            options=attrs, content=el.text)
+
+    def e_mathphrase(self, el, parent):
+        if self._stack[-2] == 'inlineequation':
+            self._run_role(parent, 'math', content=el.text)
+        else:
+            self._run_directive(parent, 'math', content=el.text)
 
     # assembly -> toctree conversion
 
